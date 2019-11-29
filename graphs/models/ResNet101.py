@@ -10,7 +10,7 @@ import torch.nn as nn
 import torch.utils.model_zoo as model_zoo
 from torchsummary import summary
 from graphs.models.sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
-
+from graphs.models.conv2_5d import Conv2_5d
 model_urls = {
     'resnet18': 'https://download.pytorch.org/models/resnet18-5c106cde.pth',
     'resnet34': 'https://download.pytorch.org/models/resnet34-333f7ec4.pth',
@@ -18,6 +18,16 @@ model_urls = {
     'resnet101': 'https://download.pytorch.org/models/resnet101-5d3b4d8f.pth',
     'resnet152': 'https://download.pytorch.org/models/resnet152-b121ed2d.pth',
 }
+class SequentialwithDepth(nn.Sequential):
+    def forward(self, input, depth, f):
+        i = 0
+        for module in self._modules.values():
+            if i == 0:
+                input = module(input, depth, f)
+                i += 1
+            else:
+                input = module(input)
+        return input
 
 class Bottleneck(nn.Module):
     expansion = 4
@@ -57,6 +67,43 @@ class Bottleneck(nn.Module):
 
         return out
 
+class BottleneckDepth(nn.Module):
+    #输出维度扩张倍数
+    expansion = 4
+    def __init__(self, inplanes, planes, stride=1, dilation=1, downsample=None, bn_momentum=0.1):
+        super(BottleneckDepth, self).__init__()
+        self.conv1 = nn.Conv2d(inplanes, planes, kernel_size=1, bias=False)
+        self.bn1 = SynchronizedBatchNorm2d(planes, momentum=bn_momentum)
+        self.conv2 = Conv2_5d(planes, planes, kernel_size=3, stride=stride,
+                               padding=dilation, dilation=dilation, bias=False)
+        self.bn2 = SynchronizedBatchNorm2d(planes, momentum=bn_momentum)
+        self.conv3 = nn.Conv2d(planes, planes * self.expansion, kernel_size=1, bias=False)
+        self.bn3 = SynchronizedBatchNorm2d(planes * self.expansion, momentum=bn_momentum)
+        self.relu = nn.ReLU(inplace=True)
+        self.downsample = downsample
+        self.stride = stride
+
+    def forward(self, x, depth, f):
+        residual = x
+
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+
+        out = self.conv2(out, depth, f)
+        out = self.bn2(out)
+        out = self.relu(out)
+
+        out = self.conv3(out)
+        out = self.bn3(out)
+        #如果有下采样需要将x也下采样到同样H×W
+        if self.downsample is not None:
+            residual = self.downsample(x)
+
+        out += residual
+        out = self.relu(out)
+
+        return out
 
 class ResNet(nn.Module):
 
@@ -100,12 +147,12 @@ class ResNet(nn.Module):
             )
 
         layers = []
-        layers.append(block(self.inplanes, planes, stride, dilation, downsample, bn_momentum=bn_momentum))
+        layers.append(BottleneckDepth(self.inplanes, planes, stride, dilation, downsample, bn_momentum=bn_momentum))
         self.inplanes = planes * block.expansion
         for i in range(1, blocks):
             layers.append(block(self.inplanes, planes, dilation=dilation, bn_momentum=bn_momentum))
 
-        return nn.Sequential(*layers)
+        return SequentialwithDepth(*layers)
 
     def _load_pretrained_model(self):
         pretrain_dict = model_zoo.load_url(model_urls['resnet101'])
@@ -117,21 +164,23 @@ class ResNet(nn.Module):
         state_dict.update(model_dict)
         self.load_state_dict(state_dict)
         print("Having loaded imagenet-pretrained successfully!")
-    def forward(self, x):
-        x = self.conv1(x)
+
+    def forward(self, input, depth, f):
+        x = self.conv1(input)  # stride = 2
+        depth = self.maxpool(depth)
         x = self.bn1(x)
         x = self.relu(x)
-        x = self.maxpool(x)
+        x = self.maxpool(x)  # stride = 2
+        depth = self.maxpool(depth)
 
-        x = self.layer1(x)
+        x = self.layer1(x, depth, f)
         low_level_feat = x
-        x = self.layer2(x)
-        x = self.layer3(x)
-        x = self.layer4(x)
-
-        # x = self.avgpool(x)
-        # x = x.view(x.size(0), -1)
-        # x = self.fc(x)
+        x = self.layer2(x, depth, f)
+        depth = self.maxpool(depth)
+        x = self.layer3(x, depth, f)
+        depth = self.maxpool(depth)
+        x = self.layer4(x, depth, f)
+        return x, low_level_feat
 
         return x, low_level_feat
 
@@ -161,7 +210,12 @@ def resnet101(bn_momentum=0.1, pretrained=False, output_stride=16):
 if __name__ =="__main__":
     model = resnet101(pretrained=False)
     model.eval()
-    print(model)
+    # print(model)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = model.to(device)
-    summary(model, (3, 512, 512))
+    input = torch.rand(3,3,512,512).to(device)
+    depth = torch.rand(3,1,512,512).to(device)
+    f = 1
+    output, low_level_feat = model(input, depth, f)
+    print(output)
+    print(low_level_feat.size(),output.size())
