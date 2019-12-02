@@ -123,6 +123,7 @@ class ResNet(nn.Module):
         self.bn1 = SynchronizedBatchNorm2d(64, momentum=bn_momentum)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+        self.avgpool = nn.AvgPool2d(kernel_size=3, stride=2, padding=1)
         self.layer1 = self._make_layer(block, 64, layers[0], stride=strides[0], dilation=dilations[0],
                                        bn_momentum=bn_momentum)
         self.layer2 = self._make_layer(block, 128, layers[1], stride=strides[1], dilation=dilations[1],
@@ -167,21 +168,23 @@ class ResNet(nn.Module):
 
     def forward(self, input, depth, f):
         x = self.conv1(input)  # stride = 2
-        depth = self.maxpool(depth)
+        depth = self.avgpool(depth)
         x = self.bn1(x)
         x = self.relu(x)
         x = self.maxpool(x)  # stride = 2
-        depth = self.maxpool(depth)
+        depth = self.avgpool(depth)
 
         x = self.layer1(x, depth, f)
         low_level_feat = x
+        # print(x)
         x = self.layer2(x, depth, f)
-        depth = self.maxpool(depth)
+        # print(x)
+        depth = self.avgpool(depth)
         x = self.layer3(x, depth, f)
-        depth = self.maxpool(depth)
+        print(x)
+        depth = self.avgpool(depth)
         x = self.layer4(x, depth, f)
-        return x, low_level_feat
-
+        # print(x)
         return x, low_level_feat
 
     def _init_weight(self):
@@ -214,8 +217,9 @@ if __name__ =="__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = model.to(device)
     input = torch.rand(3,3,512,512).to(device)
-    depth = torch.rand(3,1,512,512).to(device)
+    # depth = torch.rand(3,1,512,512).to(device)
+    depth = torch.full((3,1,512,512), fill_value=1).to(device)
     f = 1
     output, low_level_feat = model(input, depth, f)
-    print(output)
-    print(low_level_feat.size(),output.size())
+    # print(output)
+    print(low_level_feat.size(), output.size())

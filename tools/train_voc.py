@@ -23,7 +23,7 @@ from libs.modules.sync_batchnorm.replicate import patch_replication_callback
 from libs.utils.data_utils import calculate_weigths_labels
 from libs.utils import Eval
 from libs.models.decoder import DeepLab
-from libs.datasets.Voc_Dataset import VOCDataLoader
+from libs.datasets.Nyud2_Dataset import Nyud2_DataLoader
 
 def str2bool(v):
     if v.lower() in ('yes', 'true', 't', 'y', '1'):
@@ -95,7 +95,7 @@ class Trainer():
             # nesterov=self.args.nesterov
         )
         # dataloader
-        self.dataloader = VOCDataLoader(self.args)
+        self.dataloader = Nyud2_ataLoader(self.args)
         self.epoch_num = ceil(self.args.iter_max / self.dataloader.train_iterations)
 
     def main(self):
