@@ -77,8 +77,8 @@ class DeepLab(nn.Module):
             self.freeze_bn()
             print("freeze bacth normalization successfully!")
 
-    def forward(self, input):
-        x, low_level_features = self.Resnet101(input)
+    def forward(self, input, depth, f=1):
+        x, low_level_features = self.Resnet101(input, depth, f)
 
         x = self.encoder(x)
         predict = self.decoder(x, low_level_features)

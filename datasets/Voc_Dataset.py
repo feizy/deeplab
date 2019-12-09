@@ -210,6 +210,22 @@ class VOCDataLoader():
 
 
 if __name__ == '__main__':
+    arg_parser = argparse.ArgumentParser()
+    arg_parser.add_argument('--dataset', default='voc2012', type=str,
+                            choices=['voc2012', 'voc2012_aug', 'cityscapes'],
+                            help='dataset choice')
+    arg_parser.add_argument('--base_size', default=513, type=int,
+                            help='crop size of image')
+    arg_parser.add_argument('--crop_size', default=513, type=int,
+                            help='base size of image')
+    arg_parser.add_argument('--num_classes', default=21, type=int,
+                            help='num class of mask')
+    arg_parser.add_argument('--data_loader_workers', default=16, type=int,
+                            help='num_workers of Dataloader')
+    arg_parser.add_argument('--pin_memory', default=2, type=int,
+                            help='pin_memory of Dataloader')
+    arg_parser.add_argument('--split', type=str, default='train',
+                            help="choose from train/val/test/trainval")
     data=scipy.io.loadmat('/data/linhua/VOCdevkit/BSD/dataset/cls/2008_003846.mat')
     print(data['GTcls']["Segmentation"][0,0])
     print(np.array([[(1,2,3)]]).shape)

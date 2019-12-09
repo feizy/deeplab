@@ -19,7 +19,7 @@ model_urls = {
     'resnet152': 'https://download.pytorch.org/models/resnet152-b121ed2d.pth',
 }
 class SequentialwithDepth(nn.Sequential):
-    def forward(self, input, depth, f):
+    def forward(self, input, depth, f=1):
         i = 0
         for module in self._modules.values():
             if i == 0:
@@ -166,7 +166,7 @@ class ResNet(nn.Module):
         self.load_state_dict(state_dict)
         print("Having loaded imagenet-pretrained successfully!")
 
-    def forward(self, input, depth, f):
+    def forward(self, input, depth, f=1):
         x = self.conv1(input)  # stride = 2
         depth = self.avgpool(depth)
         x = self.bn1(x)
@@ -213,7 +213,7 @@ def resnet101(bn_momentum=0.1, pretrained=False, output_stride=16):
 if __name__ =="__main__":
     model = resnet101(pretrained=False)
     model.eval()
-    # print(model)
+    print(model)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = model.to(device)
     input = torch.rand(3,3,512,512).to(device)
@@ -222,4 +222,4 @@ if __name__ =="__main__":
     f = 1
     output, low_level_feat = model(input, depth, f)
     # print(output)
-    print(low_level_feat.size(), output.size())
+    # print(low_level_feat.size(), output.size())

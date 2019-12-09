@@ -19,11 +19,11 @@ from tensorboardX import SummaryWriter
 
 import sys
 sys.path.append(os.path.abspath('..'))
-from libs.modules.sync_batchnorm.replicate import patch_replication_callback
-from libs.utils.data_utils import calculate_weigths_labels
-from libs.utils import Eval
-from libs.models.decoder import DeepLab
-from libs.datasets.Nyud2_Dataset import Nyud2_DataLoader
+from graphs.models.sync_batchnorm.replicate import patch_replication_callback
+from utils.data_utils import calculate_weigths_labels
+from utils import Eval
+from graphs.models.decoder import DeepLab
+from datasets.NYU_Dataset import Nyud2_DataLoader
 
 def str2bool(v):
     if v.lower() in ('yes', 'true', 't', 'y', '1'):
@@ -95,7 +95,7 @@ class Trainer():
             # nesterov=self.args.nesterov
         )
         # dataloader
-        self.dataloader = Nyud2_ataLoader(self.args)
+        self.dataloader = Nyud2_DataLoader(self.args)
         self.epoch_num = ceil(self.args.iter_max / self.dataloader.train_iterations)
 
     def main(self):
@@ -164,7 +164,7 @@ class Trainer():
         # Initialize your average meters
 
         batch_idx = 0
-        for x, y, _ in tqdm_epoch:
+        for x, y, depth in tqdm_epoch:
             self.poly_lr_scheduler(
                 optimizer=self.optimizer,
                 init_lr=self.args.lr,
@@ -180,12 +180,12 @@ class Trainer():
 
             # y.to(torch.long)
             if self.cuda:
-                x, y = x.to(self.device), y.to(device=self.device, dtype=torch.long)
+                x, y, depth = x.to(self.device), y.to(device=self.device, dtype=torch.long), depth.to(self.device)
 
             self.optimizer.zero_grad()
 
             # model
-            pred = self.model(x)
+            pred = self.model(x,depth)
             # logger.info("pre:{}".format(pred.data.cpu().numpy()))
             y = torch.squeeze(y, 1)
             # logger.info("y:{}".format(y.cpu().numpy()))
@@ -356,11 +356,11 @@ if __name__ == '__main__':
     arg_parser = argparse.ArgumentParser()
 
     # Path related arguments
-    arg_parser.add_argument('--data_root_path', type=str, default="/data/linhua/VOCdevkit/",
+    arg_parser.add_argument('--data_root_path', type=str, default="/home/feizy/datasets/nyuv2/",
                             help="the root path of dataset")
     arg_parser.add_argument('--checkpoint_dir', default=os.path.abspath('..') + "/checkpoints/",
                             help="the path of ckpt file")
-    arg_parser.add_argument('--result_filepath', default="/data/linhua/VOCdevkit/VOC2012/Results/",
+    arg_parser.add_argument('--result_filepath', default="/home/feizy/PycharmProjects/Deeplab-v3plus/data/NYUDV2/Results/",
                             help="the filepath where mask store")
     arg_parser.add_argument('--loss_weights_dir', default="/data/linhua/VOCdevkit/pretrained_weights/")
 
@@ -371,7 +371,7 @@ if __name__ == '__main__':
                             help="choose from 8 or 16")
     arg_parser.add_argument('--bn_momentum', type=float, default=0.1,
                             help="batch normalization momentum")
-    arg_parser.add_argument('--imagenet_pretrained', type=str2bool, default=True,
+    arg_parser.add_argument('--imagenet_pretrained', type=str2bool, default=False,
                             help="whether apply iamgenet pretrained weights")
     arg_parser.add_argument('--pretrained_ckpt_file', type=str, default=None,
                             help="whether apply pretrained checkpoint")
@@ -385,18 +385,17 @@ if __name__ == '__main__':
                             help="whether to val after each train epoch")
 
     # train related arguments
-    arg_parser.add_argument('--gpu', type=str, default="1,3",
+    arg_parser.add_argument('--gpu', type=str, default="0",
                             help=" the num of gpu")
     arg_parser.add_argument('--batch_size_per_gpu', default=2, type=int,
                             help='input batch size')
 
     # dataset related arguments
-    arg_parser.add_argument('--dataset', default='voc2012', type=str,
-                            choices=['voc2012', 'voc2012_aug', 'cityscapes'],
+    arg_parser.add_argument('--dataset', default='nyudv2', type=str,
                             help='dataset choice')
-    arg_parser.add_argument('--base_size', default=513, type=int,
+    arg_parser.add_argument('--base_size', default=(640,480), type=int,
                             help='crop size of image')
-    arg_parser.add_argument('--crop_size', default=513, type=int,
+    arg_parser.add_argument('--crop_size', default=(640,480), type=int,
                             help='base size of image')
     arg_parser.add_argument('--num_classes', default=21, type=int,
                             help='num class of mask')
@@ -423,9 +422,10 @@ if __name__ == '__main__':
                             help="the maxinum of iteration")
     arg_parser.add_argument('--poly_power', type=float, default=0.9,
                             help="poly_power")
+    arg_parser.add_argument('--batch_size', type=int, default=4)
     args = arg_parser.parse_args()
 
-    args.batch_size = args.batch_size_per_gpu * ceil(len(args.gpu) / 2)
+
 
     train_id = str(args.backbone) + '_' + str(args.output_stride)
     train_id += '_iamgenet_pre-' + str(args.imagenet_pretrained)
